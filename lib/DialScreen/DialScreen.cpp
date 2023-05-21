@@ -7,6 +7,7 @@ DialScreen::DialScreen(TFT_eSPI* tft) {
     this->spr->setSwapBytes(true);
     this->spr->setFreeFont(&Orbitron_Light_24);
     this->spr->setTextColor(color1, TFT_BLACK);
+    this->tuneType = MANUAL;
 }
 
 DialScreen::~DialScreen() {
@@ -58,9 +59,24 @@ void DialScreen::drawFM() {
 }
 
 void DialScreen::drawTuneType() {
+  String text = "";
     this->spr->setTextDatum(CC_DATUM);
-    this->spr->drawRoundRect(185, 2, 54, 20, 4, TFT_WHITE);
-    this->spr->drawString("Manual", 215, 12, 2); 
+    this->spr->drawRoundRect(180, 2, 58, 20, 4, TFT_WHITE);
+    switch (this->tuneType){
+    case MANUAL:
+      text = "Manual"; 
+      break;
+    case SEARCH:
+      text = "Seek"; 
+      break;
+    case PRESET:
+      text = "Pre"; 
+      break;
+    default:
+      text = ""; 
+      break;
+    }
+    this->spr->drawString(text, 215, 12, 2); 
 }
 
 void DialScreen::drawMuted() {
@@ -92,6 +108,9 @@ void DialScreen::setMute(bool mute){
     this->muted = mute;
 };
 
+void DialScreen::setTuneType(TuneType tuneType){
+  this->tuneType = tuneType;
+}
 
 /* ESTACIONES GUARDADAS
   spr.drawString("Guardado", 38, 14, 2);

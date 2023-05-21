@@ -12,9 +12,15 @@
 #define color1 0xC638
 #define color2 0xC638
 
+enum TuneType {
+  MANUAL = 0,
+  SEARCH = 1,
+  PRESET = 2
+};
 class DialScreen {
     private:
         TFT_eSprite* spr;
+        TuneType tuneType;
         float frequency;
         void drawDial(int value);
         void drawFM();
@@ -29,6 +35,7 @@ class DialScreen {
         ~DialScreen();
         void update(int value, RADIO_INFO *radio_info);
         void setMute(bool mute);
+        void setTuneType(TuneType tuneType);
 };
 
 #endif

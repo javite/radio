@@ -28,7 +28,7 @@ TEA5767 radio;
 #define color1 0xC638
 #define color2 0xC638
 
-int value = 959;
+uint16_t value = 959;
 int minimal = 880;
 int maximal = 1080;
 int strength = 0;
@@ -45,44 +45,37 @@ enum Direction {
   FORDWARD = 1
 };
 
-enum TuneType {
-  MANUAL = 0,
-  SEARCH = 1,
-  PRESET = 2
-};
+// enum TuneType {
+//   MANUAL = 0,
+//   SEARCH = 1,
+//   PRESET = 2
+// };
 
 enum Direction direction = FORDWARD;
 enum TuneType tuneType = MANUAL;
 
 RADIO_INFO radio_info;
 
-void drawScreen() {
+void updateScreen(){
+  dialScreen.update(value, &radio_info);
+}
+
+void update() {
   float freq = value * 10.00;
 
   if (muted == false){
     switch (tuneType){
       case MANUAL:
         radio.setFrequency(freq);
-        radio.getRadioInfo(&radio_info);
-
-        Serial.println(radio_info.active);
-        Serial.println(radio_info.mono);
-        Serial.println(radio_info.rds);
-        Serial.println(radio_info.rssi);//
-        Serial.println(radio_info.snr);
-        Serial.println(radio_info.stereo);//
-        Serial.println(radio_info.tuned);
+        // Serial.println(radio_info.rssi);//
+        // Serial.println(radio_info.stereo);//
         break;
       case SEARCH:
         if(direction == FORDWARD){
-          Serial.println("direction");
-          Serial.println(direction);
           radio.seekUp();
         } else {
           radio.seekDown();
-          Serial.println(direction);
         }
-        Serial.println(radio.getFrequency());
         break;
       case PRESET:
         radio.setFrequency(freq);
@@ -91,7 +84,10 @@ void drawScreen() {
         break;
     }
   }
-  dialScreen.update(value, &radio_info);
+  value = radio.getFrequency();
+  value = value / 10.0;
+  radio.getRadioInfo(&radio_info);
+  updateScreen();
 }
 
 void readEncoder() {
@@ -126,7 +122,7 @@ void mute() {
     muted = !muted;
     radio.setMute(muted);
     dialScreen.setMute(muted);
-    drawScreen();
+    update();
 }
 
 void singleClick() {
@@ -143,7 +139,8 @@ void singleClick() {
     default:
       break;
   }
-  Serial.println(tuneType);
+  dialScreen.setTuneType(tuneType);
+  updateScreen();
 } // singleClick
 
 void doubleClick() {
@@ -187,10 +184,10 @@ void setup() {
   // FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, RGB>(leds, NUM_LEDS);
   Wire.begin(21, 22);
   radio.init();
-  radio.debugEnable(false);
+  radio.debugEnable(true);
   radio.setBand(RADIO_BAND_FM);
-  radio.setFrequency(9590);
-  radio.getRadioInfo(&radio_info);
+  // radio.setFrequency(9590);
+  // radio.getRadioInfo(&radio_info);
   radio.setMute(false);
 
   // leds[0] = CRGB::Red;
@@ -201,14 +198,16 @@ void setup() {
   // leds[5] = CRGB::Blue;
   // leds[6] = CRGB::Red;
   // FastLED.show();
-  dialScreen.update(value, &radio_info);
+  // dialScreen.update(value, &radio_info);
+  update();
+
 }
 
 void loop() {
   if(encoder_changed == true){
     encoder_changed = false;
     Serial.println(value);
-    drawScreen();
+    update();
   }
   menu_button.tick();
   mute_button.tick();
