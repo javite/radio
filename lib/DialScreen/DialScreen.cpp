@@ -13,11 +13,11 @@ DialScreen::DialScreen(TFT_eSPI* tft) {
 DialScreen::~DialScreen() {
 }
 
-void DialScreen::update(int value, RADIO_INFO *radio_info){
+void DialScreen::update(int freq, RADIO_INFO *radio_info){
     this->spr->fillSprite(TFT_BLACK);
     this->spr->setTextColor(TFT_WHITE, TFT_BLACK);
 
-    this->drawDial(value);
+    this->drawDial(freq);
     this->drawFM();
     this->drawTuneType();
     this->drawMuted();
@@ -27,11 +27,11 @@ void DialScreen::update(int value, RADIO_INFO *radio_info){
     this->spr->pushSprite(0, 0);
 };
 
-void DialScreen::drawDial(int value) {
+void DialScreen::drawDial(int freq) {
     this->spr->setTextDatum(CC_DATUM);
-    this->frequency = value * 10;
-    this->spr->drawFloat(this->frequency / 100.0, 1, SCREEN_WIDTH / 2 - 10, 54, 7); // frecuancia actual
-    int temp = value - 15;
+    this->frequency = freq;
+    this->spr->drawFloat(this->frequency / 100.0, 1, SCREEN_WIDTH / 2 - 10, 54, 7); // frecuencia actual
+    int temp = this->frequency / 10 - 15;
     for (int i = 0; i < 30; i++){
         if ((temp % 10) == 0) {
             spr->drawLine(i * 8, SCREEN_HEIGHT, i * 8, SCREEN_HEIGHT - LARGE_LINE_HEIGHT, color1);
