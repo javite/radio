@@ -1,47 +1,48 @@
 
 #include <Wire.h>
-// #include <FastLED.h>
+#include <FastLED.h>
 #include "TFT_eSPI.h"
 #include <RotaryEncoder.h>
 #include <OneButton.h>
 #include "TEA5767.h"
 #include "DialScreen.h"
 
-TFT_eSPI tft = TFT_eSPI();
-DialScreen dialScreen(&tft);
-
 #define PIN_IN1 15
 #define PIN_IN2 13
 #define PIN_INPUT 2
 #define PIN_SDA 21
 #define PIN_SCL 22
-// #define NUM_LEDS 7
-// #define DATA_PIN 42
-// #define CLOCK_PIN 45
-// CRGB leds[NUM_LEDS];
-
-RotaryEncoder encoder(PIN_IN1, PIN_IN2, RotaryEncoder::LatchMode::TWO03);
-OneButton menu_button(PIN_INPUT, true);
-OneButton mute_button(0, true);
-
-TEA5767 radio;
+#define NUM_LEDS 8
+#define DATA_PIN 32
 
 #define color1 0xC638
 #define color2 0xC638
 #define MIN_FREQ 8750
 #define MAX_FREQ 10810
 #define STEP_FREQ 20
+#define STATIONS_AMOUNT 9
 
-float freq = 9590;
+TFT_eSPI tft = TFT_eSPI();
+DialScreen dialScreen(&tft);
+CRGB leds[NUM_LEDS];
+RotaryEncoder encoder(PIN_IN1, PIN_IN2, RotaryEncoder::LatchMode::TWO03);
+OneButton menu_button(PIN_INPUT, true);
+OneButton mute_button(0, true);
+TEA5767 radio;
+RADIO_INFO radio_info;
 
+long freq = 9590;
+long encoder_count = 9590;
 int strength = 0;
-String sta[6] = {"96.6", "101.0", "89.4", "106,5", "98.2", "92.4"};
-
+int index_station = 0;
+int index_leds = 0;
+int index_colors = 0;
 bool muted = false;
-int deb = 0;
 bool encoder_changed =  false;
+bool leds_changed = false;
 bool button_pressed = false;
 unsigned long pressStartTime;
+long station[STATIONS_AMOUNT] = { 8990, 9210, 9510, 9590, 10150, 10070, 10230, 10310, 10430};
 
 enum Direction {
   BACKWARD = 0,
@@ -51,15 +52,16 @@ enum Direction {
 enum Direction direction = FORDWARD;
 enum TuneType tuneType = MANUAL;
 
-RADIO_INFO radio_info;
+CRGB colors[12] = { CRGB::AliceBlue, CRGB::Aqua, CRGB::Bisque, CRGB::YellowGreen, CRGB::Violet, CRGB::Teal, CRGB::BlueViolet, CRGB::Coral, CRGB::DarkCyan, CRGB::Cyan, CRGB::Green, CRGB::HotPink };
+
 
 void updateScreen(){
   dialScreen.update(freq, &radio_info);
-  // delay(200);
 }
 
 void update() {
-  // float prev_freq = freq;
+  long prev_freq = freq;
+  freq = encoder_count;
   const int minimum_rssi = 10;
   uint8_t rssi = 0;
   if (!muted){
@@ -67,6 +69,7 @@ void update() {
       case MANUAL:
         radio.setFrequency(freq);
         freq = radio.getFrequency();
+        radio.getRadioInfo(&radio_info);
         break;
       case SEARCH:
         do {
@@ -79,20 +82,57 @@ void update() {
           rssi = radio_info.rssi;
           freq = radio.getFrequency();
           updateScreen();
-        } while ( rssi < minimum_rssi && freq < MAX_FREQ && freq > MIN_FREQ );
+        } while ( rssi < minimum_rssi && freq != prev_freq );
         break;
       case PRESET:
-        radio.setFrequency(freq);
+        if(direction == FORDWARD){
+          index_station++;
+          if(index_station > STATIONS_AMOUNT - 1){
+            index_station = 0;
+          }
+        } else {
+          index_station--;
+          if(index_station < 0){
+            index_station = STATIONS_AMOUNT - 1;
+          }
+        }
+        radio.setFrequency(station[index_station]);
         freq = radio.getFrequency();
+        radio.getRadioInfo(&radio_info);
         break;
       default:
         break;
     }
   }
-  
-  // radio.getRadioInfo(&radio_info);
-  // Serial.println(radio_info.rssi);
   updateScreen();
+  encoder_count = freq ;
+}
+
+void updatedLEDS(){
+  if(direction == FORDWARD){
+    index_leds++;
+  } else {
+    index_leds--;
+  }
+  if(index_leds > (NUM_LEDS - 1)){
+    index_leds = 0;
+  } else if(index_leds < 0){
+    index_leds = NUM_LEDS - 1;
+  }
+  for (size_t i = 0; i < NUM_LEDS; i++){
+    if(i == index_leds){
+      leds[i] = colors[index_colors];
+    } else {
+      leds[i] = CRGB::Black;
+    }
+    index_colors++;
+    if(index_colors > 11){
+      index_colors = 0;
+    } else if(index_colors < 0){
+      index_colors = 11;
+    }
+  }
+  FastLED.show();
 }
 
 void readEncoder() {
@@ -100,21 +140,22 @@ void readEncoder() {
   int newPos = encoder.getPosition();
   if (pos != newPos) {
     if (newPos > pos) {
-      freq = freq - STEP_FREQ;
-      if(freq < MIN_FREQ){
-        freq = MAX_FREQ;
+      encoder_count = encoder_count - STEP_FREQ;
+      if(encoder_count < MIN_FREQ){
+        encoder_count = MAX_FREQ;
       }
       direction = BACKWARD;
     }
     if (newPos < pos) {
-      freq = freq + STEP_FREQ;
-      if(freq > MAX_FREQ){
-        freq = MIN_FREQ;
+      encoder_count = encoder_count + STEP_FREQ;
+      if(encoder_count > MAX_FREQ){
+        encoder_count = MIN_FREQ;
       }
       direction = FORDWARD;
     }
     pos = newPos;
     encoder_changed = true;
+    leds_changed = true;
   }
 }
 
@@ -127,7 +168,7 @@ void mute() {
     muted = !muted;
     radio.setMute(muted);
     dialScreen.setMute(muted);
-    update();
+    updateScreen();
 }
 
 void singleClick() {
@@ -160,6 +201,7 @@ void multiClick() {
 
 void pressStart() {
   Serial.println("pressStart()");
+  pressStartTime = millis();
 } // pressStart()
 
 void pressStop() {
@@ -179,39 +221,36 @@ void setup() {
   menu_button.setPressTicks(500);
   menu_button.attachLongPressStart(pressStart);
   menu_button.attachLongPressStop(pressStop);
-  //menu_button.setDebounceTicks(100);
+  menu_button.setDebounceTicks(50);
   mute_button.attachClick(mute);
 
   tft.begin();
   tft.writecommand(0x11);
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
-  // FastLED.addLeds<APA102, DATA_PIN, CLOCK_PIN, RGB>(leds, NUM_LEDS);
+  FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
   Wire.begin(PIN_SDA, PIN_SCL);
   radio.init();
   radio.debugEnable(false);
   radio.setBand(RADIO_BAND_FM);
   radio.setMute(muted);
-
-  // leds[0] = CRGB::Red;
-  // leds[1] = CRGB::White;
-  // leds[2] = CRGB::Red;
-  // leds[3] = CRGB::Green;
-  // leds[4] = CRGB::Red;
-  // leds[5] = CRGB::Blue;
-  // leds[6] = CRGB::Red;
-  // FastLED.show();
-  // dialScreen.update(value, &radio_info);
+  radio.setFreqLow(MIN_FREQ);
+  radio.setFreqHigh(MAX_FREQ);
+  radio.setFreqSteps(STEP_FREQ);
+  updatedLEDS();
   update();
 
 }
 
 void loop() {
   if(encoder_changed){
-    encoder_changed = false;
     update();
+    encoder_changed = false;
+  }
+  if(leds_changed){
+    updatedLEDS();
+    leds_changed = false;
   }
   menu_button.tick();
   mute_button.tick();
-
 }

@@ -22,7 +22,7 @@ class DialScreen {
         TFT_eSprite* spr;
         TuneType tuneType;
         float frequency;
-        void drawDial(int value);
+        void drawDial(long value);
         void drawFM();
         void drawTuneType();
         void drawMuted();
@@ -33,7 +33,7 @@ class DialScreen {
     public:
         DialScreen(TFT_eSPI* tft);
         ~DialScreen();
-        void update(int value, RADIO_INFO *radio_info);
+        void update(long value, RADIO_INFO *radio_info);
         void setMute(bool mute);
         void setTuneType(TuneType tuneType);
 };

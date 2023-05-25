@@ -76,6 +76,10 @@ class TEA5767 : public RADIO {
   void  _readRegisters();  // read all status & data registers
   void  _saveRegisters();  // Save writable registers back to the chip
 
+  void setFreqLow(long freq);
+  void setFreqHigh(long freq);
+  void setFreqSteps(long freq);
+
   private:
   // ----- local variables
 

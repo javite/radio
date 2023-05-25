@@ -13,7 +13,7 @@ DialScreen::DialScreen(TFT_eSPI* tft) {
 DialScreen::~DialScreen() {
 }
 
-void DialScreen::update(int freq, RADIO_INFO *radio_info){
+void DialScreen::update(long freq, RADIO_INFO *radio_info){
     this->spr->fillSprite(TFT_BLACK);
     this->spr->setTextColor(TFT_WHITE, TFT_BLACK);
 
@@ -27,7 +27,7 @@ void DialScreen::update(int freq, RADIO_INFO *radio_info){
     this->spr->pushSprite(0, 0);
 };
 
-void DialScreen::drawDial(int freq) {
+void DialScreen::drawDial(long freq) {
     this->spr->setTextDatum(CC_DATUM);
     this->frequency = freq;
     this->spr->drawFloat(this->frequency / 100.0, 1, SCREEN_WIDTH / 2 - 10, 54, 7); // frecuencia actual
@@ -61,16 +61,16 @@ void DialScreen::drawFM() {
 void DialScreen::drawTuneType() {
   String text = "";
     this->spr->setTextDatum(CC_DATUM);
-    this->spr->drawRoundRect(180, 2, 58, 20, 4, TFT_WHITE);
+    //this->spr->drawRoundRect(180, 2, 58, 20, 4, TFT_WHITE);
     switch (this->tuneType){
     case MANUAL:
       text = "Manual"; 
       break;
     case SEARCH:
-      text = "Seek"; 
+      text = "Busqueda"; 
       break;
     case PRESET:
-      text = "Pre"; 
+      text = "Preset"; 
       break;
     default:
       text = ""; 

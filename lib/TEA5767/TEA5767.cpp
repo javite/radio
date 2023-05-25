@@ -180,11 +180,11 @@ void TEA5767::setBand(RADIO_BAND newBand) {
 * @return RADIO_FREQ the current frequency.
 */
 RADIO_FREQ TEA5767::getFrequency() {
-  return _freq;
-  _readRegisters();
-  unsigned long frequencyW = ((status[REG_1] & REG_1_PLL) << 8) | status[REG_2];
-  frequencyW = ((frequencyW * QUARTZ / 4) - FILTER) / 10000;
-  return ((RADIO_FREQ)frequencyW);
+  return this->_freq;
+  // _readRegisters();
+  // unsigned long frequencyW = ((status[REG_1] & REG_1_PLL) << 8) | status[REG_2];
+  // frequencyW = ((frequencyW * QUARTZ / 4) - FILTER) / 10000;
+  // return ((RADIO_FREQ)frequencyW);
 }  // getFrequency
 
 
@@ -271,16 +271,14 @@ void TEA5767::getAudioInfo(AUDIO_INFO *info) {
 } // getAudioInfo()
 
 
-void TEA5767::checkRDS()
-{
+void TEA5767::checkRDS() {
   // DEBUG_FUNC0("checkRDS");
 } // checkRDS
 
 // ----- Debug functions -----
 
 /// Send the current values of all registers to the Serial port.
-void TEA5767::debugStatus()
-{
+void TEA5767::debugStatus() {
   RADIO::debugStatus();
 } // debugStatus
 
@@ -289,9 +287,14 @@ void TEA5767::debugStatus()
 void TEA5767::_seek(bool seekUp) {
   DEBUG_FUNC0("_seek");
   if(seekUp){
-    this->_freq = this->_freq + 20;
+    this->_freq = this->_freq + this->_freqSteps;
   } else {
-    this->_freq = this->_freq - 20;
+    this->_freq = this->_freq - this->_freqSteps;
+  }
+  if(this->_freq < this->_freqLow){
+    this->_freq = this->_freqHigh;
+  } else if(this->_freq > this->_freqHigh){
+    this->_freq = this->_freqLow;
   }
   this->setFrequency(this->_freq);
   DEBUG_STR(this->_freq);
@@ -305,7 +308,15 @@ void TEA5767::_waitEnd() {
 } // _waitEnd()
 
 
-
+void TEA5767::setFreqLow(long freq){
+  this->_freqLow = freq;
+}
+void TEA5767::setFreqHigh(long freq){
+  this->_freqHigh = freq;
+}
+void TEA5767::setFreqSteps(long freq){
+  this->_freqSteps = freq;
+}
 // ----- internal functions -----
 
 // The End.
