@@ -36,8 +36,7 @@ OneButton mute_button(0, true);
 TEA5767 radio;
 RADIO_INFO radio_info;
 FileManager filemanager;
-long freq = 9590;
-long encoder_count = 9590;
+long freq, encoder_count;
 int strength = 0;
 int index_station = 0;
 int index_leds = 0;
@@ -246,9 +245,11 @@ void setup() {
       Serial.println("An Error has occurred while mounting SPIFFS");
       return;
   }
+  
   tuneType = filemanager.readTuneType();
-  encoder_count = filemanager.readActualFrequency();
+  freq = filemanager.readActualFrequency();
   index_station = filemanager.readActualPreset();
+  encoder_count = freq;
   attachInterrupt(digitalPinToInterrupt(PIN_IN1), checkPosition, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_IN2), checkPosition, CHANGE);
   
