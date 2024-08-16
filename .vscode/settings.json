@@ -7,5 +7,6 @@
         "type_traits": "cpp",
         "utility": "cpp",
         "algorithm": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "F:/Mi unidad/01 - Proyectos/29 - internet_radio/radio/.pio/libdeps/esp32doit-devkit-v1/TFT_eSPI"
 }

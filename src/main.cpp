@@ -1,11 +1,16 @@
 
 #include <Wire.h>
 #include <FastLED.h>
+#include <ArduinoJson.h>
+#include <FS.h>
+#include <SPIFFS.h>
 #include "TFT_eSPI.h"
 #include <RotaryEncoder.h>
 #include <OneButton.h>
 #include "TEA5767.h"
 #include "DialScreen.h"
+
+#include <FileManager.h>
 
 #define PIN_IN1 15
 #define PIN_IN2 13
@@ -20,7 +25,7 @@
 #define MIN_FREQ 8750
 #define MAX_FREQ 10810
 #define STEP_FREQ 20
-#define STATIONS_AMOUNT 9
+#define STATIONS_AMOUNT 10
 
 TFT_eSPI tft = TFT_eSPI();
 DialScreen dialScreen(&tft);
@@ -30,7 +35,7 @@ OneButton menu_button(PIN_INPUT, true);
 OneButton mute_button(0, true);
 TEA5767 radio;
 RADIO_INFO radio_info;
-
+FileManager filemanager;
 long freq = 9590;
 long encoder_count = 9590;
 int strength = 0;
@@ -42,41 +47,48 @@ bool encoder_changed =  false;
 bool leds_changed = false;
 bool button_pressed = false;
 unsigned long pressStartTime;
-long station[STATIONS_AMOUNT] = { 8990, 9210, 9510, 9590, 10150, 10070, 10230, 10310, 10430};
+long station[STATIONS_AMOUNT] = { 8990, 9510, 9590, 9710, 9830, 10070, 10150, 10230, 10310, 10430 };
 
 enum Direction {
+  INIT = -1,
   BACKWARD = 0,
   FORDWARD = 1
 };
 
-enum Direction direction = FORDWARD;
-enum TuneType tuneType = MANUAL;
+enum Direction direction = INIT;
+enum TuneType tuneType = PRESET;
 
-CRGB colors[12] = { CRGB::AliceBlue, CRGB::Aqua, CRGB::Bisque, CRGB::YellowGreen, CRGB::Violet, CRGB::Teal, CRGB::BlueViolet, CRGB::Coral, CRGB::DarkCyan, CRGB::Cyan, CRGB::Green, CRGB::HotPink };
-
+CRGB colors[8] = { CRGB::Aqua, CRGB::Bisque, CRGB::YellowGreen, CRGB::Violet, CRGB::Red, CRGB::Cyan, CRGB::Green, CRGB::HotPink };
 
 void updateScreen(){
+  dialScreen.setTuneType(tuneType);
   dialScreen.update(freq, &radio_info);
 }
 
-void update() {
+void updateFrecuency() {
   long prev_freq = freq;
-  freq = encoder_count;
   const int minimum_rssi = 10;
   uint8_t rssi = 0;
   if (!muted){
     switch (tuneType){
       case MANUAL:
-        radio.setFrequency(freq);
-        freq = radio.getFrequency();
-        radio.getRadioInfo(&radio_info);
+        freq = encoder_count;
         break;
       case SEARCH:
         do {
-          if(direction == FORDWARD){
-            radio.seekUp();
-          } else {
-            radio.seekDown();
+          switch (direction) {
+            case INIT:
+              radio.setFrequency(encoder_count);
+              break;
+            case FORDWARD:
+              radio.seekUp();
+              break;
+            case BACKWARD:
+              radio.seekDown();
+              break;
+            default:
+              Serial.println(F("Dirección no reconocida"));
+              break;
           }
           radio.getRadioInfo(&radio_info);
           rssi = radio_info.rssi;
@@ -85,25 +97,16 @@ void update() {
         } while ( rssi < minimum_rssi && freq != prev_freq );
         break;
       case PRESET:
-        if(direction == FORDWARD){
-          index_station++;
-          if(index_station > STATIONS_AMOUNT - 1){
-            index_station = 0;
-          }
-        } else {
-          index_station--;
-          if(index_station < 0){
-            index_station = STATIONS_AMOUNT - 1;
-          }
-        }
-        radio.setFrequency(station[index_station]);
-        freq = radio.getFrequency();
-        radio.getRadioInfo(&radio_info);
+        freq = station[index_station];
+        filemanager.saveActualPreset(index_station);
         break;
       default:
         break;
     }
   }
+  radio.setFrequency(freq);
+  radio.getRadioInfo(&radio_info);
+  filemanager.saveActualFrequency(freq);
   updateScreen();
   encoder_count = freq ;
 }
@@ -126,10 +129,10 @@ void updatedLEDS(){
       leds[i] = CRGB::Black;
     }
     index_colors++;
-    if(index_colors > 11){
+    if(index_colors > 7){
       index_colors = 0;
     } else if(index_colors < 0){
-      index_colors = 11;
+      index_colors = 7;
     }
   }
   FastLED.show();
@@ -140,18 +143,41 @@ void readEncoder() {
   int newPos = encoder.getPosition();
   if (pos != newPos) {
     if (newPos > pos) {
-      encoder_count = encoder_count - STEP_FREQ;
-      if(encoder_count < MIN_FREQ){
-        encoder_count = MAX_FREQ;
-      }
       direction = BACKWARD;
-    }
-    if (newPos < pos) {
-      encoder_count = encoder_count + STEP_FREQ;
-      if(encoder_count > MAX_FREQ){
-        encoder_count = MIN_FREQ;
-      }
+    } else {
       direction = FORDWARD;
+    } 
+    switch (tuneType){
+      case MANUAL:
+        if(direction == BACKWARD){
+          encoder_count = encoder_count - STEP_FREQ;
+          if(encoder_count < MIN_FREQ){
+            encoder_count = MAX_FREQ;
+          }
+        } else {
+          encoder_count = encoder_count + STEP_FREQ;
+          if(encoder_count > MAX_FREQ){
+            encoder_count = MIN_FREQ;
+          }
+        }
+        break;
+      case SEARCH:
+        break;
+      case PRESET:
+        if(direction == FORDWARD){
+          index_station++;
+          if(index_station > STATIONS_AMOUNT - 1){
+            index_station = 0;
+          }
+        } else {
+          index_station--;
+          if(index_station < 0){
+            index_station = STATIONS_AMOUNT - 1;
+          }
+        }
+        break;
+      default:
+        break;
     }
     pos = newPos;
     encoder_changed = true;
@@ -172,6 +198,7 @@ void mute() {
 }
 
 void singleClick() {
+  TuneType prevTuneType = tuneType;
   switch (tuneType){
     case MANUAL:
       tuneType = SEARCH;
@@ -185,7 +212,9 @@ void singleClick() {
     default:
       break;
   }
-  dialScreen.setTuneType(tuneType);
+  if (tuneType != prevTuneType) {
+    filemanager.saveTuneType(static_cast<int>(tuneType));
+  }
   updateScreen();
 } // singleClick
 
@@ -212,6 +241,14 @@ void pressStop() {
 
 void setup() {
   Serial.begin(115200);
+
+  if (!SPIFFS.begin(true)) {
+      Serial.println("An Error has occurred while mounting SPIFFS");
+      return;
+  }
+  tuneType = filemanager.readTuneType();
+  encoder_count = filemanager.readActualFrequency();
+  index_station = filemanager.readActualPreset();
   attachInterrupt(digitalPinToInterrupt(PIN_IN1), checkPosition, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_IN2), checkPosition, CHANGE);
   
@@ -222,14 +259,18 @@ void setup() {
   menu_button.attachLongPressStart(pressStart);
   menu_button.attachLongPressStop(pressStop);
   menu_button.setDebounceTicks(50);
+
   mute_button.attachClick(mute);
 
   tft.begin();
   tft.writecommand(0x11);
   tft.setRotation(1);
   tft.fillScreen(TFT_BLACK);
+
   FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+
   Wire.begin(PIN_SDA, PIN_SCL);
+
   radio.init();
   radio.debugEnable(false);
   radio.setBand(RADIO_BAND_FM);
@@ -237,14 +278,14 @@ void setup() {
   radio.setFreqLow(MIN_FREQ);
   radio.setFreqHigh(MAX_FREQ);
   radio.setFreqSteps(STEP_FREQ);
+  
   updatedLEDS();
-  update();
-
+  updateFrecuency();
 }
 
 void loop() {
   if(encoder_changed){
-    update();
+    updateFrecuency();
     encoder_changed = false;
   }
   if(leds_changed){
