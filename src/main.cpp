@@ -11,6 +11,7 @@
 #include "DialScreen.h"
 
 #include <FileManager.h>
+#include <RadioFile.h>
 
 #define PIN_IN1 15
 #define PIN_IN2 13
@@ -25,7 +26,6 @@
 #define MIN_FREQ 8750
 #define MAX_FREQ 10810
 #define STEP_FREQ 20
-#define STATIONS_AMOUNT 10
 
 TFT_eSPI tft = TFT_eSPI();
 DialScreen dialScreen(&tft);
@@ -36,17 +36,19 @@ OneButton mute_button(0, true);
 TEA5767 radio;
 RADIO_INFO radio_info;
 FileManager filemanager;
-long freq, encoder_count;
+RadioFile* radioManager;
+long encoder_count;
 int strength = 0;
-int index_station = 0;
 int index_leds = 0;
 int index_colors = 0;
 bool muted = false;
 bool encoder_changed =  false;
+bool enable_save = false;
 bool leds_changed = false;
 bool button_pressed = false;
-unsigned long pressStartTime;
-long station[STATIONS_AMOUNT] = { 8990, 9510, 9590, 9710, 9830, 10070, 10150, 10230, 10310, 10430 };
+unsigned long pressStartTime = 0;
+unsigned long lastChangeTime = 0;
+const unsigned long TIME_BEFORE_SAVING = 2000;
 
 enum Direction {
   INIT = -1,
@@ -55,23 +57,23 @@ enum Direction {
 };
 
 enum Direction direction = INIT;
-enum TuneType tuneType = PRESET;
 
 CRGB colors[8] = { CRGB::Aqua, CRGB::Bisque, CRGB::YellowGreen, CRGB::Violet, CRGB::Red, CRGB::Cyan, CRGB::Green, CRGB::HotPink };
 
 void updateScreen(){
-  dialScreen.setTuneType(tuneType);
-  dialScreen.update(freq, &radio_info);
+  dialScreen.setTuneType(radioManager->getTuneType());
+  dialScreen.update(radioManager->getActualFrequency(), &radio_info);
 }
 
 void updateFrecuency() {
-  long prev_freq = freq;
+  long freq;
+  long prev_freq = radioManager->getActualFrequency();
   const int minimum_rssi = 10;
   uint8_t rssi = 0;
   if (!muted){
-    switch (tuneType){
+    switch (radioManager->getTuneType()){
       case MANUAL:
-        freq = encoder_count;
+       radioManager->saveActualFrequency(encoder_count);
         break;
       case SEARCH:
         do {
@@ -92,22 +94,22 @@ void updateFrecuency() {
           radio.getRadioInfo(&radio_info);
           rssi = radio_info.rssi;
           freq = radio.getFrequency();
+          radioManager->setActualFrequency(freq);
           updateScreen();
         } while ( rssi < minimum_rssi && freq != prev_freq );
+       radioManager->saveActualFrequency(freq);
         break;
       case PRESET:
-        freq = station[index_station];
-        filemanager.saveActualPreset(index_station);
+       radioManager->saveActualPreset();
         break;
       default:
         break;
     }
   }
-  radio.setFrequency(freq);
+  radio.setFrequency(radioManager->getActualFrequency());
   radio.getRadioInfo(&radio_info);
-  filemanager.saveActualFrequency(freq);
+  encoder_count = radioManager->getActualFrequency();
   updateScreen();
-  encoder_count = freq ;
 }
 
 void updatedLEDS(){
@@ -146,7 +148,7 @@ void readEncoder() {
     } else {
       direction = FORDWARD;
     } 
-    switch (tuneType){
+    switch (radioManager->getTuneType()){
       case MANUAL:
         if(direction == BACKWARD){
           encoder_count = encoder_count - STEP_FREQ;
@@ -164,15 +166,9 @@ void readEncoder() {
         break;
       case PRESET:
         if(direction == FORDWARD){
-          index_station++;
-          if(index_station > STATIONS_AMOUNT - 1){
-            index_station = 0;
-          }
+         radioManager->actualPresetUp();
         } else {
-          index_station--;
-          if(index_station < 0){
-            index_station = STATIONS_AMOUNT - 1;
-          }
+         radioManager->actualPresetDown();
         }
         break;
       default:
@@ -197,22 +193,27 @@ void mute() {
 }
 
 void singleClick() {
-  TuneType prevTuneType = tuneType;
-  switch (tuneType){
+  TuneType nextTuneType;
+  TuneType prevTuneType =radioManager->getTuneType();
+  switch (radioManager->getTuneType()){
     case MANUAL:
-      tuneType = SEARCH;
+      nextTuneType = SEARCH;
       break;
     case SEARCH:
-      tuneType = PRESET;
+      nextTuneType = PRESET;
       break;  
     case PRESET:
-      tuneType = MANUAL;
+      nextTuneType = MANUAL;
       break; 
     default:
+      nextTuneType = PRESET;
       break;
   }
-  if (tuneType != prevTuneType) {
-    filemanager.saveTuneType(static_cast<int>(tuneType));
+  if (nextTuneType != prevTuneType) {
+    if(radioManager->saveTuneType(static_cast<int>(nextTuneType))){
+      lastChangeTime = millis() - TIME_BEFORE_SAVING;
+      enable_save = true;
+    };
   }
   updateScreen();
 } // singleClick
@@ -228,15 +229,20 @@ void multiClick() {
 } 
 
 void pressStart() {
-  Serial.println("pressStart()");
   pressStartTime = millis();
-} // pressStart()
+}
 
 void pressStop() {
-  Serial.print("pressStop(");
-  Serial.print(millis() - pressStartTime);
-  Serial.println(") detected.");
-} // pressStop()
+  if ((millis() - pressStartTime) > 200){
+    if(radioManager->getTuneType() == PRESET){
+     radioManager->deleteStation(radioManager->getActualFrequency());
+    } else {
+      radioManager->saveStation(radioManager->getActualFrequency());
+    }
+    lastChangeTime = millis() - TIME_BEFORE_SAVING;
+    enable_save = true;
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -245,21 +251,30 @@ void setup() {
       Serial.println("An Error has occurred while mounting SPIFFS");
       return;
   }
+
+  radioManager = new RadioFile(filemanager); 
   
-  tuneType = filemanager.readTuneType();
-  freq = filemanager.readActualFrequency();
-  index_station = filemanager.readActualPreset();
-  encoder_count = freq;
+  encoder_count = radioManager->getActualFrequency();
+
+  if (!radioManager->getStations().empty()) {
+    Serial.println("Estaciones leídas:");
+    for (int station :radioManager->getStations()) {
+        Serial.println(station);
+    }
+  } else {
+    Serial.println("else");
+  }
+
   attachInterrupt(digitalPinToInterrupt(PIN_IN1), checkPosition, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_IN2), checkPosition, CHANGE);
   
   menu_button.attachClick(singleClick);
   menu_button.attachDoubleClick(doubleClick);
   menu_button.attachMultiClick(multiClick);
-  menu_button.setPressTicks(500);
+  menu_button.setPressTicks(400);
   menu_button.attachLongPressStart(pressStart);
   menu_button.attachLongPressStop(pressStop);
-  menu_button.setDebounceTicks(50);
+  menu_button.setDebounceTicks(20);
 
   mute_button.attachClick(mute);
 
@@ -288,6 +303,21 @@ void loop() {
   if(encoder_changed){
     updateFrecuency();
     encoder_changed = false;
+    lastChangeTime = millis();
+    enable_save = true;
+  }
+  if(enable_save){
+    if((millis() - lastChangeTime > TIME_BEFORE_SAVING) && radioManager->shouldSave()){
+      detachInterrupt(digitalPinToInterrupt(PIN_IN1));
+      detachInterrupt(digitalPinToInterrupt(PIN_IN2));
+      if(!radioManager->saveRadioFile()){
+        Serial.println("Error on saving file");
+      };
+      
+      attachInterrupt(digitalPinToInterrupt(PIN_IN1), checkPosition, CHANGE);
+      attachInterrupt(digitalPinToInterrupt(PIN_IN2), checkPosition, CHANGE);
+      enable_save = false;
+    }
   }
   if(leds_changed){
     updatedLEDS();

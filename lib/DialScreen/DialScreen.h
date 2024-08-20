@@ -17,6 +17,7 @@ enum TuneType {
   SEARCH = 1,
   PRESET = 2
 };
+
 class DialScreen {
     private:
         TFT_eSprite* spr;
